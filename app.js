@@ -1,4 +1,5 @@
-const state = { rows: [], filtered: [], apiUrl: localStorage.getItem('jr_capacity_api_url') || '' };
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbzrNCLwRIt71fF6KiKnBltlc7dXvmJkwvRZKi7QILFAbrCYqaGMzQ_L9FryUkKRYDgT/exec';
+const state = { rows: [], filtered: [], apiUrl: localStorage.getItem('jr_capacity_api_url') || DEFAULT_API_URL };
 
 const $ = (id) => document.getElementById(id);
 const fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
