@@ -1,5 +1,5 @@
 (()=>{
-  const sourceRows=Array.isArray(window.JR_BOM_ROWS)?window.JR_BOM_ROWS:[];
+  const sourceRows=Array.isArray(window.JR_BOM_ROWS)?window.JR_BOM_ROWS:[],masterParts=Array.isArray(window.JR_AUTO_PARTS)?window.JR_AUTO_PARTS:[],masterPartMap=new Map(masterParts.map(x=>[String(x.partNo||'').trim(),x]));
   const DATA_KEY='jr_bom_rows_v2',OUTPUT_KEY='jr_bom_output_parts_v2';
   const readStore=(key,fallback)=>{try{const value=JSON.parse(localStorage.getItem(key));return value??fallback}catch(_){return fallback}};
   let rows=readStore(DATA_KEY,sourceRows),outputParts=readStore(OUTPUT_KEY,{});
@@ -73,7 +73,7 @@
   const norm=v=>String(v??'').trim();
   const usableAssembly=v=>{const x=norm(v);return x&&x!=='-';};
   let data=[],assemblies=[],processes=[],selectedCardPart='';
-  const rebuildData=()=>{let current='';data=rows.map((r,i)=>{const explicit=usableAssembly(r.assembly)?norm(r.assembly):'';if(explicit)current=explicit;const assembly=norm(r.assemblyResolved)||current||norm(r.partNo);const out={...r,index:i+1,sourceIndex:i,assemblyResolved:assembly,groupStart:!!explicit};if(current&&norm(r.partNo)===current)current='';return out}).filter(r=>norm(r.partNo));assemblies=[...new Set(data.map(r=>r.assemblyResolved).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));processes=[...new Set(data.flatMap(r=>r.processes||[]).map(norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b));};
+  const rebuildData=()=>{let current='';data=rows.map((r,i)=>{const explicit=usableAssembly(r.assembly)?norm(r.assembly):'';if(explicit)current=explicit;const assembly=norm(r.assemblyResolved)||current||norm(r.partNo);const master=masterPartMap.get(norm(r.partNo))||{};const out={...master,...r,index:i+1,sourceIndex:i,assemblyResolved:assembly,groupStart:!!explicit};if(current&&norm(r.partNo)===current)current='';return out}).filter(r=>norm(r.partNo));const existing=new Set(data.map(r=>norm(r.partNo)));masterParts.forEach((part,i)=>{const partNo=norm(part.partNo);if(partNo&&!existing.has(partNo))data.push({...part,index:data.length+1,sourceIndex:-1,assemblyResolved:partNo,groupStart:true,processes:[],stepCounts:[],type:'Part',sourceType:'In-house',virtual:true})});assemblies=[...new Set(data.map(r=>r.assemblyResolved).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));processes=[...new Set(data.flatMap(r=>r.processes||[]).map(norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b));};
   rebuildData();
   const assemblySel=document.getElementById('bomAssembly'),diagramSel=document.getElementById('bomDiagramAssembly'),processSel=document.getElementById('bomProcess'),search=document.getElementById('bomSearch');
   const rebuildSelects=()=>{const oldA=assemblySel.value,oldD=diagramSel.value,oldP=processSel.value;assemblySel.innerHTML='<option value="">All Assembly</option>'+assemblies.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');diagramSel.innerHTML=assemblies.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');processSel.innerHTML='<option value="">All Process</option>'+processes.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');if(assemblies.includes(oldA))assemblySel.value=oldA;if(assemblies.includes(oldD))diagramSel.value=oldD;if(processes.includes(oldP))processSel.value=oldP;};
@@ -81,7 +81,7 @@
   const imageKey=p=>`jr_bom_image_${p}`;
   const positionKey=(assembly,part)=>`jr_bom_position_${assembly}_${part}`;
   const savedPosition=(assembly,part,max)=>{try{const n=Number(localStorage.getItem(positionKey(assembly,part)));return Number.isInteger(n)&&n>=0&&n<max?n:null}catch(_){return null}};
-  const imageFor=p=>{try{return localStorage.getItem(imageKey(p))||''}catch(_){return''}};
+  const imageFor=p=>{try{return localStorage.getItem(imageKey(p))||masterPartMap.get(norm(p))?.image||''}catch(_){return masterPartMap.get(norm(p))?.image||''}};
   const imageHtml=(p,cls)=>imageFor(p)?`<img class="${cls}" src="${imageFor(p)}" alt="${esc(p)}">`:`<div class="${cls} bom-empty-image">No image</div>`;
   const imageActions=p=>`<div class="bom-image-actions"><button class="bom-upload" data-upload-part="${esc(p)}">ใส่/เปลี่ยนรูป</button>${imageFor(p)?`<button class="bom-upload remove" data-remove-part="${esc(p)}">ลบรูป</button>`:''}</div>`;
   const renderFishbone=()=>{
@@ -102,7 +102,7 @@
     const q=norm(search.value).toLowerCase(),a=assemblySel.value,p=processSel.value;
     const filtered=data.filter(r=>(!q||`${r.assemblyResolved} ${r.partNo}`.toLowerCase().includes(q))&&(!a||r.assemblyResolved===a)&&(!p||(r.processes||[]).includes(p)));
     const uniqueParts=[...new Map(filtered.map(r=>[norm(r.partNo),r])).values()];
-    document.getElementById('bomPartGrid').innerHTML=uniqueParts.map(r=>`<button type="button" class="bom-list-card ${selectedCardPart===norm(r.partNo)?'active':''}" data-bom-part-card="${esc(r.partNo)}" data-bom-card-assembly="${esc(r.assemblyResolved)}">${imageHtml(r.partNo,'bom-part-image')}<span class="bom-list-info"><strong>${esc(r.partNo)}</strong><small class="bom-list-type">${esc(r.type||'Part')}</small><small>Assembly: ${esc(r.assemblyResolved)}</small><small>${esc((r.processes||[]).map(norm).filter(Boolean).join(' → ')||'ยังไม่ระบุ Process')}</small></span></button>`).join('')||'<div class="empty">ไม่พบ Part ตามตัวกรอง</div>';
+    document.getElementById('bomPartGrid').innerHTML=uniqueParts.map(r=>`<button type="button" class="bom-list-card ${selectedCardPart===norm(r.partNo)?'active':''}" data-bom-part-card="${esc(r.partNo)}" data-bom-card-assembly="${esc(r.assemblyResolved)}">${imageHtml(r.partNo,'bom-part-image')}<span class="bom-list-info"><strong>${esc(r.partNo)}</strong><small>${esc(r.partName||'')}</small><small class="bom-list-type">${esc(r.type||'Part')}</small><small>${r.customer?'Customer: '+esc(r.customer):'Assembly: '+esc(r.assemblyResolved)}</small><small>${r.weight?'Weight: '+esc(r.weight):esc((r.processes||[]).map(norm).filter(Boolean).join(' → ')||'ยังไม่ระบุ Process')}</small></span></button>`).join('')||'<div class="empty">ไม่พบ Part ตามตัวกรอง</div>';
     document.getElementById('bomPartCount').textContent=`${uniqueParts.length} Parts`;
     document.getElementById('bomBody').innerHTML=filtered.map(r=>{
       const ps=Array.from({length:6},(_,i)=>norm((r.processes||[])[i]));
